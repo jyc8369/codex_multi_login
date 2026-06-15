@@ -3,7 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXTENSION_DIR="$ROOT_DIR/extension"
-OUTPUT_VSIX="$EXTENSION_DIR/-codex-multi-login-0.1.0.vsix"
+EXTENSION_NAME="$(node -p "require('./package.json').name" 2>/dev/null)"
+EXTENSION_VERSION="$(node -p "require('./package.json').version" 2>/dev/null)"
+OUTPUT_VSIX="$EXTENSION_DIR/${EXTENSION_NAME}-${EXTENSION_VERSION}.vsix"
 
 cd "$ROOT_DIR"
 npm run compile
