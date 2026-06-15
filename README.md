@@ -46,3 +46,6 @@ The output will be a `.vsix` file in the workspace root.
 - The reference implementation lives in `codex-accounts-manager-master/` and is kept as a reference only.
 - Account metadata is stored in the extension global storage directory.
 - Tokens are stored in OS Keychain by default, with plaintext mode available as an option.
+- The extension now declares a `browser` entry point for VS Code Web compatibility.
+- In web host mode, the extension shows a read-only dashboard backed by VS Code web storage (`workspace.fs`).
+- Commands that depend on local auth files or keychain are hidden in web host mode.

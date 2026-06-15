@@ -15,6 +15,7 @@
   "categories": ["Other"],
   "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
+  "browser": "./out/browser/extension.js",
   "files": [
     "extension/out/**",
     "README.md",
@@ -30,6 +31,16 @@
       { "command": "codexMultiLogin.refreshQuota", "title": "Codex Multi Login: Refresh Quota" },
       { "command": "codexMultiLogin.refreshAllQuotas", "title": "Codex Multi Login: Refresh All Quotas" }
     ],
+    "menus": {
+      "commandPalette": [
+        { "command": "codexMultiLogin.openDashboard", "when": "true" },
+        { "command": "codexMultiLogin.addAccount", "when": "!isWeb" },
+        { "command": "codexMultiLogin.importCurrentAuth", "when": "!isWeb" },
+        { "command": "codexMultiLogin.switchAccount", "when": "!isWeb" },
+        { "command": "codexMultiLogin.refreshQuota", "when": "!isWeb" },
+        { "command": "codexMultiLogin.refreshAllQuotas", "when": "!isWeb" }
+      ]
+    },
     "configuration": {
       "title": "Codex Multi Login",
       "properties": {
@@ -55,12 +66,16 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p . && npm run copy:webview",
-    "copy:webview": "node scripts/copy-webview.mjs",
+    "compile": "bash ./package.sh --build-only",
+    "copy:webview": "bash ./package.sh --build-only --skip-compile",
     "watch": "tsc -watch -p .",
+    "compile-web": "bash ./package.sh --build-only",
+    "watch-web": "tsc -watch -p .",
+    "package-web": "bash ./package.sh --package",
     "test": "echo \"No tests yet\"",
     "lint": "tsc -p . --noEmit",
-    "package": "bash extension/package.sh"
+    "package": "bash ./package.sh",
+    "publish": "bash ./package.sh --publish"
   },
   "devDependencies": {
     "@types/node": "^22.15.29",

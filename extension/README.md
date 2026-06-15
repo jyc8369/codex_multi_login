@@ -46,3 +46,6 @@ See `JSON_FORMAT.md` for the supported format.
 - This is a lightweight personal-use build.
 - Switching accounts overwrites the active Codex auth file.
 - Deleting an account removes it from the metadata files and token store.
+- The extension also exposes a browser entry point for VS Code Web.
+- Web host mode shows a read-only dashboard backed by VS Code web storage.
+- Web host mode intentionally hides commands that require local `auth.json` or OS keychain access.

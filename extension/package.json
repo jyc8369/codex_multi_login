@@ -15,6 +15,7 @@
   "categories": ["Other"],
   "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
+  "browser": "./out/browser/extension.js",
   "files": [
     "out/**",
     "README.md",
@@ -23,6 +24,12 @@
     "LICENSE",
     "package.json"
   ],
+  "scripts": {
+    "vscode:prepublish": "npm run compile-web",
+    "compile-web": "bash ../package.sh --build-only",
+    "package-web": "bash ../package.sh --package",
+    "publish-web": "bash ../package.sh --publish"
+  },
   "contributes": {
     "commands": [
       { "command": "codexMultiLogin.openDashboard", "title": "Codex Multi Login: Open Dashboard" },
@@ -33,6 +40,17 @@
       { "command": "codexMultiLogin.refreshQuota", "title": "Codex Multi Login: Refresh Quota" },
       { "command": "codexMultiLogin.refreshAllQuotas", "title": "Codex Multi Login: Refresh All Quotas" }
     ],
+    "menus": {
+      "commandPalette": [
+        { "command": "codexMultiLogin.openDashboard", "when": "true" },
+        { "command": "codexMultiLogin.addAccount", "when": "!isWeb" },
+        { "command": "codexMultiLogin.importJson", "when": "!isWeb" },
+        { "command": "codexMultiLogin.switchAccount", "when": "!isWeb" },
+        { "command": "codexMultiLogin.deleteAccount", "when": "!isWeb" },
+        { "command": "codexMultiLogin.refreshQuota", "when": "!isWeb" },
+        { "command": "codexMultiLogin.refreshAllQuotas", "when": "!isWeb" }
+      ]
+    },
     "configuration": {
       "title": "Codex Multi Login",
       "properties": {
