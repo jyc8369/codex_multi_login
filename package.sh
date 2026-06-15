@@ -68,6 +68,7 @@ copy_webview_assets() {
   mkdir -p "$ROOT_DIR/out" "$EXTENSION_DIR"
   cp -R "$ROOT_DIR/src/webview" "$ROOT_DIR/out/"
   cp -R "$ROOT_DIR/out" "$EXTENSION_DIR/"
+  cp "$ROOT_DIR/icon.png" "$EXTENSION_DIR/icon.png"
 }
 
 build_extension() {
