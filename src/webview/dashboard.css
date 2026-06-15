@@ -38,6 +38,25 @@ body.theme-light {
   --gray: #656d76;
 }
 
+body.refresh-all-running .actions button[onclick*="refreshAll"] {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+body.edit-mode .account-list {
+  outline: 1px dashed rgba(56, 139, 253, 0.45);
+  outline-offset: 8px;
+  border-radius: 16px;
+}
+
+body.edit-mode .account-card[draggable="true"] {
+  cursor: grab;
+}
+
+body:not(.edit-mode) .account-card[draggable="true"] {
+  cursor: default;
+}
+
 body.theme-light .account-card.active {
   border-color: rgba(9, 105, 218, 0.38);
   box-shadow: 0 0 0 1px rgba(9, 105, 218, 0.10), 0 14px 28px rgba(9, 105, 218, 0.10);
@@ -89,11 +108,19 @@ button {
   cursor: pointer;
 }
 button.secondary { background: rgba(255, 255, 255, 0.04); }
+button.secondary.active {
+  border-color: rgba(56, 139, 253, 0.45);
+  background: rgba(56, 139, 253, 0.12);
+}
 button.card-action {
   padding: 7px 11px;
   font-size: 12px;
   font-weight: 700;
   background: rgba(255, 255, 255, 0.03);
+}
+button.card-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .summary { display: flex; gap: 12px; margin-bottom: 16px; }
 .summary-card {
@@ -111,6 +138,21 @@ button.card-action {
 }
 .summary-value { margin-top: 8px; font-size: 22px; font-weight: 800; }
 .summary-detail { margin-top: 4px; color: var(--text-secondary); font-size: 13px; }
+.notice {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.notice-danger {
+  border-color: rgba(193, 44, 31, 0.45);
+  background: rgba(193, 44, 31, 0.12);
+  color: #ffb4ae;
+}
 .account-list { display: flex; flex-direction: column; gap: 14px; }
 .account-card {
   background: var(--bg-surface);
@@ -118,10 +160,29 @@ button.card-action {
   border-radius: 14px;
   padding: 14px 16px;
 }
+.account-card[draggable="true"] { cursor: grab; }
+.account-card.dragging {
+  opacity: 0.55;
+  transform: scale(0.99);
+  cursor: grabbing;
+}
+.account-card.drop-before { box-shadow: inset 0 3px 0 var(--accent-blue); }
+.account-card.drop-after { box-shadow: inset 0 -3px 0 var(--accent-blue); }
 .account-card.active {
   border-color: rgba(56, 139, 253, 0.5);
   box-shadow: 0 0 0 1px rgba(56, 139, 253, 0.15), 0 14px 34px rgba(56, 139, 253, 0.12);
   background: linear-gradient(180deg, #161b22, #1c2333);
+}
+.account-card.refreshing {
+  border-color: rgba(56, 139, 253, 0.42);
+}
+.account-card.refresh-error {
+  border-color: rgba(193, 44, 31, 0.52);
+}
+.account-card.missing {
+  border-color: rgba(193, 44, 31, 0.45);
+  box-shadow: 0 0 0 1px rgba(193, 44, 31, 0.10), 0 14px 34px rgba(193, 44, 31, 0.10);
+  background: linear-gradient(180deg, rgba(193, 44, 31, 0.12), rgba(28, 35, 51, 0.9));
 }
 .account-card.inactive { opacity: 0.78; }
 .card-head {
@@ -152,16 +213,39 @@ button.card-action {
 .pill.plan-pro  { background: rgba(163,113,247,0.15); color: #a371f7; }
 .pill.status-active   { background: rgba(42,110,63,0.2); color: #3fb950; }
 .pill.status-inactive { background: rgba(110,118,129,0.2); color: var(--gray); }
+.pill.status-missing { background: rgba(193,44,31,0.2); color: #ff7b72; }
 .pill.credit-none { background: rgba(110,118,129,0.14); color: var(--text-secondary); }
 .pill.credit-available { background: rgba(56,139,253,0.15); color: var(--accent-blue); }
 .pill.credit-unlimited { background: rgba(42,110,63,0.2); color: #3fb950; }
 .metrics-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .metric {
+  position: relative;
   background: var(--bg-elevated);
   border: 1px solid var(--border-default);
   border-radius: 10px;
   padding: 10px;
   min-height: 100px;
+  overflow: hidden;
+}
+.metric-skeleton {
+  display: none;
+  position: absolute;
+  inset: 10px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.12) 37%, rgba(255,255,255,0.03) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+.account-card.refreshing .metric-skeleton {
+  display: block;
+}
+.account-card.refreshing .metric-value,
+.account-card.refreshing .metric-bar,
+.account-card.refreshing .metric-meta {
+  visibility: hidden;
+}
+.account-card.refreshing .metric-label {
+  opacity: 0.85;
 }
 .metric-label {
   font-size: 11px;
@@ -189,6 +273,20 @@ button.card-action {
 .bar-orange { background: var(--orange); }
 .bar-red    { background: var(--red); }
 .bar-blue   { background: var(--accent-blue); }
+.refresh-banner {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(193, 44, 31, 0.12);
+  color: #ffb4ae;
+  border: 1px solid rgba(193, 44, 31, 0.35);
+  font-size: 12px;
+  font-weight: 700;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 details.more {
   margin-top: 10px;
   border: 1px solid var(--border-default);
@@ -243,6 +341,12 @@ details.more > summary::-webkit-details-marker { display: none; }
   padding: 18px;
 }
 .modal h2 { margin: 0 0 12px; font-size: 18px; }
+.modal-hint {
+  margin: -4px 0 14px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
 .field-grid { display: grid; gap: 12px; margin: 12px 0 18px; }
 .field { display: grid; gap: 6px; }
 .field label {

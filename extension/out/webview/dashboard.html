@@ -36,6 +36,8 @@
       </div>
     </div>
 
+    {{MISSING_CREDENTIALS_BANNER}}
+
     <div class="account-list">
       {{ACCOUNT_CARDS}}
     </div>
@@ -44,6 +46,7 @@
   <div class="modal-backdrop" id="settingsModal" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
       <h2 id="settingsTitle">{{SETTINGS_TITLE}}</h2>
+      <div class="modal-hint">{{EDIT_MODE_HINT}}</div>
       <div class="field-grid">
         <div class="field">
           <label for="themeSelect">{{THEME_LABEL}}</label>
@@ -61,8 +64,16 @@
             <option value="ko" {{LOCALE_KO_SELECTED}}>{{LANGUAGE_KO}}</option>
           </select>
         </div>
+        <div class="field">
+          <label for="storageSelect">{{STORAGE_LABEL}}</label>
+          <select id="storageSelect">
+            <option value="keychain" {{STORAGE_KEYCHAIN_SELECTED}}>{{STORAGE_KEYCHAIN}}</option>
+            <option value="plaintext" {{STORAGE_PLAINTEXT_SELECTED}}>{{STORAGE_PLAINTEXT}}</option>
+          </select>
+        </div>
       </div>
       <div class="modal-actions">
+        <button id="editModeButton" class="secondary" data-label-enter="{{EDIT_MODE_ENTER}}" data-label-exit="{{EDIT_MODE_EXIT}}" onclick="toggleEditMode()">{{EDIT_MODE_ENTER}}</button>
         <button class="secondary" onclick="closeSettings()">{{CANCEL}}</button>
         <button onclick="applySettings()">{{APPLY}}</button>
       </div>

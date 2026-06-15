@@ -5,6 +5,8 @@ export interface CodexTokens {
   accountId?: string;
 }
 
+export type StorageMode = "keychain" | "plaintext";
+
 export interface CodexQuotaSummary {
   hourlyPercentage: number;
   hourlyWindowPresent?: boolean;
@@ -65,6 +67,8 @@ export interface CodexAccountRecord {
   id: string;
   email: string;
   accountId?: string;
+  storageKey?: string;
+  credentialsMissing?: boolean;
   planType?: string;
   isActive: boolean;
   tokens?: CodexTokens;
@@ -73,6 +77,8 @@ export interface CodexAccountRecord {
   createdAt: number;
   updatedAt: number;
 }
+
+export type StoredAccountRecord = Omit<CodexAccountRecord, "tokens">;
 
 export interface SharedCodexAccountJson {
   email?: string;

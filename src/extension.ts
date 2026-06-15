@@ -1,34 +1,79 @@
 import * as vscode from "vscode";
 import { prepareOAuthLoginSession, runPreparedOAuthLoginSession } from "./auth/oauth";
-import { DashboardPanel } from "./dashboard";
+import { DashboardPanel, renderAccountCardHtml } from "./dashboard";
 import { AccountsStore } from "./storage/accounts";
-import { ThemeMode, normalizeLocale } from "./localization";
+import { ConfigStore } from "./storage/config";
+import { StorageMode, ThemeMode, normalizeLocale } from "./localization";
 
 let store: AccountsStore | undefined;
 let dashboard: DashboardPanel | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
+let configStore: ConfigStore | undefined;
 
 const LOCALE_KEY = "codexMultiLogin.locale";
 const THEME_KEY = "codexMultiLogin.theme";
+const STORAGE_KEY = "codexMultiLogin.storageMode";
+
+console.log("[codex-multi-login] module loaded");
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   outputChannel = vscode.window.createOutputChannel("Codex Multi login");
-  const log = (level: "info" | "warn" | "error", message: string): void => {
-    outputChannel?.appendLine(`[${level}] [extension] ${message}`);
+  const boot = (message: string): void => {
+    console.log(`[codex-multi-login] ${message}`);
+    outputChannel?.appendLine(`[info] [boot] ${message}`);
   };
-  store = new AccountsStore(context, outputChannel);
-  dashboard = new DashboardPanel(context);
-  await store.init();
-  log("info", "activate");
-
-  const openDashboard = async (): Promise<void> => {
-    const accounts = await store!.list();
-    log("info", `openDashboard accounts=${accounts.length} active=${accounts.filter((account) => account.isActive).length}`);
-    const settings = {
-      locale: normalizeLocale(context.globalState.get(LOCALE_KEY)),
-      theme: (context.globalState.get(THEME_KEY) as ThemeMode | undefined) ?? "auto"
+  try {
+    boot(
+      `activate start extensionPath=${context.extensionPath} storageUri=${context.globalStorageUri.fsPath} extensionId=${context.extension.id}`
+    );
+    configStore = new ConfigStore(context);
+    const appConfig = await configStore.read();
+    boot(`config loaded storageMode=${appConfig.storageMode} warnedStorageRisk=${appConfig.warnedStorageRisk}`);
+    const log = (level: "info" | "warn" | "error", message: string): void => {
+      outputChannel?.appendLine(`[${level}] [extension] ${message}`);
+      if (level === "error") {
+        console.error(`[codex-multi-login] ${message}`);
+      }
     };
-    dashboard!.show(accounts, settings, async (message) => {
+    store = new AccountsStore(context, outputChannel);
+    dashboard = new DashboardPanel(context);
+    await context.globalState.update(STORAGE_KEY, appConfig.storageMode);
+    boot(`globalState storageMode=${appConfig.storageMode}`);
+    await store.init();
+    const keychainReady = await probeKeychain(context);
+    boot(`keychainReady=${keychainReady}`);
+    if ((!keychainReady || appConfig.storageMode === "plaintext") && !appConfig.warnedStorageRisk) {
+      const choice = await vscode.window.showWarningMessage(
+        keychainReady
+          ? "Plaintext storage weakens token protection. Continue only if you understand the risk."
+          : "OS Keychain storage is not available in this environment. Plaintext storage will be used unless you change the setting.",
+        { modal: true },
+        "OK"
+      );
+      boot(`storage warning choice=${choice ?? "none"}`);
+      if (choice === "OK") {
+        const nextMode: StorageMode = keychainReady ? appConfig.storageMode : "plaintext";
+        await configStore.write({ storageMode: nextMode, warnedStorageRisk: true });
+        await context.globalState.update(STORAGE_KEY, nextMode);
+        await store.updateStorageMode(nextMode);
+        boot(`storage mode applied nextMode=${nextMode}`);
+      }
+    }
+    log("info", "activate");
+
+    const openDashboard = async (): Promise<void> => {
+      const accounts = await store!.list();
+      const missingCount = accounts.filter((account) => account.credentialsMissing).length;
+      log(
+        "info",
+        `openDashboard accounts=${accounts.length} active=${accounts.filter((account) => account.isActive).length} missing=${missingCount}`
+      );
+      const settings = {
+        locale: normalizeLocale(context.globalState.get(LOCALE_KEY)),
+        theme: (context.globalState.get(THEME_KEY) as ThemeMode | undefined) ?? "auto",
+        storageMode: (context.globalState.get(STORAGE_KEY) as StorageMode | undefined) ?? "keychain"
+      };
+      dashboard!.show(accounts, settings, async (message) => {
       const command = (message as { command?: string }).command;
       if (command === "addAccount") {
         await vscode.commands.executeCommand("codexMultiLogin.addAccount");
@@ -51,6 +96,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           await vscode.commands.executeCommand("codexMultiLogin.deleteAccount", accountId);
         }
       }
+      if (command === "moveAccount") {
+        const accountId = (message as { accountId?: string }).accountId;
+        const targetAccountId = (message as { targetAccountId?: string }).targetAccountId;
+        const placement = (message as { placement?: string }).placement;
+        if (accountId && targetAccountId && (placement === "before" || placement === "after")) {
+          await vscode.commands.executeCommand("codexMultiLogin.moveAccount", accountId, targetAccountId, placement);
+        }
+      }
       if (command === "refreshAccount") {
         const accountId = (message as { accountId?: string }).accountId;
         if (accountId) {
@@ -69,10 +122,93 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           await openDashboard();
         }
       }
-    });
-  };
+      if (command === "setStorageMode") {
+        const value = (message as { value?: string }).value;
+        if (value === "keychain" || value === "plaintext") {
+          if (value === "plaintext" && keychainReady) {
+            const choice = await vscode.window.showWarningMessage(
+              "Plaintext storage weakens token protection. Continue only if you understand the risk.",
+              { modal: true },
+              "Use Plaintext",
+              "Cancel"
+            );
+            if (choice !== "Use Plaintext") {
+              await openDashboard();
+              return;
+            }
+          }
+          await context.globalState.update(STORAGE_KEY, value);
+          await configStore!.write({ ...(await configStore!.read()), storageMode: value, warnedStorageRisk: true });
+          await store!.updateStorageMode(value);
+          await openDashboard();
+        }
+      }
+      });
+      if (missingCount > 0) {
+        void store!.purgeMissingCredentials().then((removed) => {
+          if (removed > 0) {
+            log("warn", `purgeMissingCredentials removed=${removed}`);
+          }
+        });
+      }
+    };
 
-  context.subscriptions.push(
+    const currentLocale = (): ReturnType<typeof normalizeLocale> => normalizeLocale(context.globalState.get(LOCALE_KEY));
+
+    const refreshAccountCard = async (accountId: string): Promise<boolean> => {
+      const accounts = await store!.list();
+      const current = accounts.find((account) => account.id === accountId);
+      if (!current) {
+        log("warn", `refreshAccount skipped id=${accountId} reason=missing_account`);
+        return false;
+      }
+
+      await dashboard!.postMessage({ command: "refresh-start", accountId });
+      try {
+        const updated = await store!.refreshAccount(accountId, outputChannel);
+        if (!updated) {
+          const message = "Refresh failed.";
+          log("warn", `refreshAccount returned no data id=${accountId}`);
+          await dashboard!.postMessage({
+            command: "refresh-error",
+            accountId,
+            html: renderAccountCardHtml(current, currentLocale(), "error", message)
+          });
+          return false;
+        }
+        const nextAccount = updated ?? (await store!.list()).find((account) => account.id === accountId) ?? current;
+        await dashboard!.postMessage({
+          command: "refresh-success",
+          accountId,
+          html: renderAccountCardHtml(nextAccount, currentLocale())
+        });
+        return true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log("error", `refreshAccount failed id=${accountId} error=${message}`);
+        await dashboard!.postMessage({
+          command: "refresh-error",
+          accountId,
+          html: renderAccountCardHtml(current, currentLocale(), "error", message)
+        });
+        return false;
+      }
+    };
+
+    const refreshAllAccounts = async (): Promise<void> => {
+      const accounts = await store!.list();
+      await dashboard!.postMessage({ command: "refresh-batch-start" });
+      try {
+        for (const account of accounts) {
+          log("info", `refreshAllQuotas queue id=${account.id}`);
+          await refreshAccountCard(account.id);
+        }
+      } finally {
+        await dashboard!.postMessage({ command: "refresh-batch-end" });
+      }
+    };
+
+    context.subscriptions.push(
     vscode.commands.registerCommand("codexMultiLogin.openDashboard", openDashboard),
     vscode.commands.registerCommand("codexMultiLogin.addAccount", async () => {
       log("info", "addAccount start");
@@ -194,31 +330,50 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void vscode.window.showInformationMessage(`Deleted ${account.email}.`);
       await openDashboard();
     }),
+    vscode.commands.registerCommand(
+      "codexMultiLogin.moveAccount",
+      async (argAccountId?: string, targetAccountId?: string, placement?: string) => {
+        if (!argAccountId || !targetAccountId || (placement !== "before" && placement !== "after")) {
+          return;
+        }
+        log("info", `moveAccount command id=${argAccountId} target=${targetAccountId} placement=${placement}`);
+        const reordered = await store!.moveAccount(argAccountId, targetAccountId, placement);
+        if (!reordered) {
+          log("warn", `moveAccount failed id=${argAccountId} target=${targetAccountId} placement=${placement}`);
+          return;
+        }
+        await openDashboard();
+      }
+    ),
     vscode.commands.registerCommand("codexMultiLogin.refreshAccount", async (argAccountId?: string) => {
       if (!argAccountId) {
         return;
       }
       log("info", `refreshAccount command id=${argAccountId}`);
-      await store!.refreshAccount(argAccountId, outputChannel);
-      await openDashboard();
+      await refreshAccountCard(argAccountId);
     }),
     vscode.commands.registerCommand("codexMultiLogin.refreshQuota", async () => {
       const accounts = await store!.list();
       const active = accounts.find((account) => account.isActive) ?? accounts[0];
       if (active) {
         log("info", `refreshQuota command activeId=${active.id}`);
-        await store!.refreshAccount(active.id, outputChannel);
-        await openDashboard();
+        await refreshAccountCard(active.id);
       } else {
         log("warn", "refreshQuota skipped no accounts available");
       }
     }),
     vscode.commands.registerCommand("codexMultiLogin.refreshAllQuotas", async () => {
       log("info", "refreshAllQuotas command");
-      await store!.refreshAll(outputChannel);
-      await openDashboard();
+      await refreshAllAccounts();
     })
-  );
+    );
+    boot("activate done");
+  } catch (error) {
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    console.error(`[codex-multi-login] activate failed: ${message}`);
+    outputChannel?.appendLine(`[error] [boot] activate failed: ${message}`);
+    throw error;
+  }
 }
 
 export function deactivate(): void {
@@ -226,4 +381,16 @@ export function deactivate(): void {
   dashboard = undefined;
   outputChannel?.dispose();
   outputChannel = undefined;
+  configStore = undefined;
+}
+
+async function probeKeychain(context: vscode.ExtensionContext): Promise<boolean> {
+  const probeKey = "codexMultiLogin.__probe__";
+  try {
+    await context.secrets.store(probeKey, "ok");
+    await context.secrets.delete(probeKey);
+    return true;
+  } catch {
+    return false;
+  }
 }

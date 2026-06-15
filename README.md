@@ -19,8 +19,9 @@ Lightweight VS Code extension for managing multiple Codex accounts, switching th
   - Windows: `%APPDATA%\\Code\\User\\globalStorage\\local-personal-use.codex-multi-login\\`
   - macOS: `~/Library/Application Support/Code/User/globalStorage/local-personal-use.codex-multi-login/`
   - Linux: `~/.config/Code/User/globalStorage/local-personal-use.codex-multi-login/`
-  - `accounts.json`: account index and active account state
-  - `tokens.json`: saved account tokens
+  - `account.json`: canonical non-sensitive account metadata only
+  - `tokens.json`: saved account tokens in plaintext mode only, keyed by `storageKey`
+  - Missing keychain credentials are marked in the dashboard and removed from the saved list
 
 See [`STORAGE.md`](./STORAGE.md) and [`JSON_FORMAT.md`](./JSON_FORMAT.md) for details.
 
@@ -43,4 +44,5 @@ The output will be a `.vsix` file in the workspace root.
 
 - This project is intentionally lightweight.
 - The reference implementation lives in `codex-accounts-manager-master/` and is kept as a reference only.
-- Tokens are stored in the extension global storage directory for this local/personal build.
+- Account metadata is stored in the extension global storage directory.
+- Tokens are stored in OS Keychain by default, with plaintext mode available as an option.

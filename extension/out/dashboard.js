@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DashboardPanel = void 0;
+exports.renderAccountCardHtml = renderAccountCardHtml;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const vscode = __importStar(require("vscode"));
@@ -52,9 +53,15 @@ class DashboardPanel {
         }
         this.panel.webview.html = this.render(this.panel.webview, accounts, settings);
     }
+    async postMessage(message) {
+        if (this.panel) {
+            await this.panel.webview.postMessage(message);
+        }
+    }
     render(webview, accounts, settings) {
-        const cards = accounts.map((account) => renderAccountCard(account, settings.locale)).join("");
+        const cards = accounts.map((account) => renderAccountCardHtml(account, settings.locale)).join("");
         const activeCount = accounts.filter((account) => account.isActive).length;
+        const missingCount = accounts.filter((account) => account.credentialsMissing).length;
         const activeTheme = vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Light ? "theme-light" : "theme-dark";
         const bodyThemeClass = settings.theme === "light" ? "theme-light" : settings.theme === "dark" ? "theme-dark" : activeTheme;
         const html = readAsset("dashboard.html");
@@ -76,6 +83,10 @@ class DashboardPanel {
             .split("{{ACTIVE_HINT}}").join((0, localization_1.t)(settings.locale, "activeHint"))
             .split("{{ACCOUNT_COUNT}}").join(String(accounts.length))
             .split("{{ACTIVE_COUNT}}").join(String(activeCount))
+            .split("{{MISSING_COUNT}}").join(String(missingCount))
+            .split("{{MISSING_CREDENTIALS_BANNER}}").join(missingCount > 0
+            ? `<div class="notice notice-danger">${escapeHtml(`${(0, localization_1.t)(settings.locale, "credentialsMissing")} (${missingCount}) - ${(0, localization_1.t)(settings.locale, "credentialsMissingNotice")}`)}</div>`
+            : "")
             .split("{{ACCOUNT_CARDS}}").join(cards || `<div class="empty">${(0, localization_1.t)(settings.locale, "noAccounts")}</div>`)
             .split("{{SETTINGS_TITLE}}").join(`${(0, localization_1.t)(settings.locale, "theme")} / ${(0, localization_1.t)(settings.locale, "language")}`)
             .split("{{THEME_LABEL}}").join((0, localization_1.t)(settings.locale, "theme"))
@@ -84,16 +95,24 @@ class DashboardPanel {
             .split("{{THEME_DARK}}").join((0, localization_1.t)(settings.locale, "dark"))
             .split("{{THEME_LIGHT}}").join((0, localization_1.t)(settings.locale, "light"))
             .split("{{LANGUAGE_LABEL}}").join((0, localization_1.t)(settings.locale, "language"))
+            .split("{{STORAGE_LABEL}}").join((0, localization_1.t)(settings.locale, "storage"))
+            .split("{{STORAGE_KEYCHAIN}}").join((0, localization_1.t)(settings.locale, "keychain"))
+            .split("{{STORAGE_PLAINTEXT}}").join((0, localization_1.t)(settings.locale, "plaintext"))
             .split("{{LANGUAGE_EN}}").join((0, localization_1.t)(settings.locale, "english"))
             .split("{{LANGUAGE_KO}}").join((0, localization_1.t)(settings.locale, "korean"))
             .split("{{CANCEL}}").join((0, localization_1.t)(settings.locale, "cancel"))
             .split("{{APPLY}}").join((0, localization_1.t)(settings.locale, "apply"))
+            .split("{{EDIT_MODE_ENTER}}").join((0, localization_1.t)(settings.locale, "editModeEnter"))
+            .split("{{EDIT_MODE_EXIT}}").join((0, localization_1.t)(settings.locale, "editModeExit"))
+            .split("{{EDIT_MODE_HINT}}").join((0, localization_1.t)(settings.locale, "editModeHint"))
             .split("{{THEME_AUTO_SELECTED}}").join(settings.theme === "auto" ? "selected" : "")
             .split("{{THEME_VSCODE_SELECTED}}").join(settings.theme === "vscode" ? "selected" : "")
             .split("{{THEME_DARK_SELECTED}}").join(settings.theme === "dark" ? "selected" : "")
             .split("{{THEME_LIGHT_SELECTED}}").join(settings.theme === "light" ? "selected" : "")
             .split("{{LOCALE_EN_SELECTED}}").join(settings.locale === "en" ? "selected" : "")
             .split("{{LOCALE_KO_SELECTED}}").join(settings.locale === "ko" ? "selected" : "")
+            .split("{{STORAGE_KEYCHAIN_SELECTED}}").join(settings.storageMode === "keychain" ? "selected" : "")
+            .split("{{STORAGE_PLAINTEXT_SELECTED}}").join(settings.storageMode === "plaintext" ? "selected" : "")
             .split("{{STYLES}}").join(styles)
             .split("{{SCRIPT_PATH}}").join(scriptPath.toString());
     }
@@ -103,25 +122,39 @@ function readAsset(fileName) {
     const assetPath = path.join(__dirname, "webview", fileName);
     return fs.readFileSync(assetPath, "utf8");
 }
-function renderAccountCard(account, locale) {
+function renderAccountCardHtml(account, locale, refreshState = "idle", refreshError) {
     const quota = account.quotaSummary;
     const planClass = planClassName(account.planType);
-    const stateClass = account.isActive ? "status-active" : "status-inactive";
-    const cardClass = account.isActive ? "account-card active" : "account-card inactive";
+    const stateClass = account.credentialsMissing ? "status-missing" : account.isActive ? "status-active" : "status-inactive";
+    const cardClass = account.credentialsMissing
+        ? "account-card missing"
+        : account.isActive
+            ? "account-card active"
+            : "account-card inactive";
+    const refreshClass = refreshState === "loading" ? "refreshing" : refreshState === "error" ? "refresh-error" : "";
     const planContext = planQuotaContext(account.planType, locale);
+    const canUseCredentials = !account.credentialsMissing && !!account.tokens;
+    const missingBadge = account.credentialsMissing
+        ? `<span class="pill status-missing">${(0, localization_1.t)(locale, "credentialsMissing").toUpperCase()}</span>`
+        : "";
+    const refreshBanner = refreshState === "error"
+        ? `<div class="refresh-banner">${escapeHtml(refreshError || (0, localization_1.t)(locale, "refreshFailed"))}</div>`
+        : "";
     return `
-    <div class="${cardClass}">
+    <div class="${[cardClass, refreshClass].filter(Boolean).join(" ")}" draggable="true" data-account-id="${escapeHtml(account.id)}" data-refresh-state="${refreshState}">
       <div class="card-head">
         <span class="email">${escapeHtml(account.email)}</span>
         <span class="pill ${planClass}">${escapeHtml((account.planType ?? "unknown").toUpperCase())}</span>
         <span class="pill ${stateClass}">${account.isActive ? "ACTIVE" : "INACTIVE"}</span>
+        ${missingBadge}
         ${renderCreditBadge(quota?.credits, locale)}
         <span class="card-actions">
-          <button class="card-action secondary" onclick="send('switchAccount', '${escapeJs(account.id)}')">${(0, localization_1.t)(locale, "switchAccount")}</button>
-          <button class="card-action secondary" onclick="send('refreshAccount', '${escapeJs(account.id)}')">${(0, localization_1.t)(locale, "refresh")}</button>
-          <button class="card-action secondary" onclick="send('deleteAccount', '${escapeJs(account.id)}')">${(0, localization_1.t)(locale, "delete")}</button>
+          <button class="card-action secondary" ${canUseCredentials ? `onclick="send('switchAccount', '${escapeJs(account.id)}')"` : "disabled"}>${(0, localization_1.t)(locale, "switchAccount")}</button>
+          <button class="card-action secondary" ${canUseCredentials ? `onclick="send('refreshAccount', '${escapeJs(account.id)}')"` : "disabled"}>${(0, localization_1.t)(locale, "refresh")}</button>
+          <button class="card-action secondary" data-allow-while-loading="true" onclick="send('deleteAccount', '${escapeJs(account.id)}')">${(0, localization_1.t)(locale, "delete")}</button>
         </span>
       </div>
+      ${refreshBanner}
       <div class="metrics-row">
         ${renderMetricCard("5-hour limit", quota?.hourlyWindowPresent ? quota.hourlyPercentage : undefined, "bar-green", renderQuotaCardMeta(quota?.hourlyWindowPresent, quota?.hourlyWindowMinutes, quota?.hourlyResetTime, quota?.hourlyRequestsLeft, quota?.hourlyRequestsLimit, planContext.hourly, locale))}
         ${renderMetricCard("Weekly limit", quota?.weeklyWindowPresent ? quota.weeklyPercentage : undefined, "bar-yellow", renderQuotaCardMeta(quota?.weeklyWindowPresent, quota?.weeklyWindowMinutes, quota?.weeklyResetTime, quota?.weeklyRequestsLeft, quota?.weeklyRequestsLimit, planContext.weekly, locale))}
@@ -137,6 +170,7 @@ function renderMetricCard(label, percentage, barClass = "bar-blue", meta = "No d
     const effectiveBarClass = typeof percentage === "number" ? colorBarClassFromPercentage(width) : barClass;
     return `
     <div class="metric">
+      <div class="metric-skeleton" aria-hidden="true"></div>
       <div class="metric-label">${escapeHtml(label)}</div>
       <div class="metric-value ${value === "-" ? "muted" : colorClassFromPercentage(width)}">${escapeHtml(value)}</div>
       <div class="metric-bar"><span class="${effectiveBarClass}" style="width:${width}%"></span></div>

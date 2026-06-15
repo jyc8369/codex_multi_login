@@ -30,14 +30,20 @@ Platform paths:
 
 Files:
 
-- `accounts.json`
-  - Account index
-  - Active account ID
-  - Account list
+- `account.json`
+  - Canonical account metadata file
+  - Account email
+  - Account ID
+  - Plan type
+  - Active state
+  - `storageKey` for the token backend entry
+  - Non-sensitive account fields only
 - `tokens.json`
-  - Saved tokens keyed by account ID
+  - Saved tokens keyed by `storageKey`
+  - Used only in plaintext mode
 
 ## Notes
 
 - `Switch Account` overwrites `auth.json` with the selected account tokens.
-- `Delete` removes the selected account from both `accounts.json` and `tokens.json`.
+- `Delete` removes the selected account from `account.json` and `tokens.json` or the keychain entry.
+- If a keychain entry disappears, the dashboard marks the account as `Credentials missing` and removes it from the saved list on refresh.
